@@ -2,24 +2,46 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 import datetime
+import os
 
-# ── Page config ──────────────────────────────────────────────────────────────
+# ── Page config ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Forgokul Snaks – Outlet Survey",
     page_icon="🍟",
     layout="centered",
 )
 
+# ── Persistent CSV storage ────────────────────────────────────────────────────
+DATA_FILE = "survey_data.csv"
+COLUMNS = ["Sr No", "Date", "Outlet Name", "Outlet Mobile No",
+           "Outlet Type", "Outlet Class", "Location",
+           "Sub-City", "Sub-Village", "Outlet Address"]
+
+def load_data() -> pd.DataFrame:
+    if os.path.exists(DATA_FILE):
+        try:
+            return pd.read_csv(DATA_FILE, dtype=str)
+        except Exception:
+            pass
+    return pd.DataFrame(columns=COLUMNS)
+
+def save_row(row: dict):
+    df = load_data()
+    row["Sr No"] = len(df) + 1
+    df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
+    df.to_csv(DATA_FILE, index=False)
+
+def clear_data():
+    if os.path.exists(DATA_FILE):
+        os.remove(DATA_FILE)
+
 # ── Custom CSS ────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap');
 
-html, body, [class*="css"] {
-    font-family: 'Poppins', sans-serif;
-}
+html, body, [class*="css"] { font-family: 'Poppins', sans-serif; }
 
-/* Header banner */
 .banner {
     background: linear-gradient(135deg, #ff6b00 0%, #ff9f00 100%);
     border-radius: 16px;
@@ -29,10 +51,9 @@ html, body, [class*="css"] {
     text-align: center;
     box-shadow: 0 8px 24px rgba(255,107,0,0.30);
 }
-.banner h1 { font-size: 2rem; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+.banner h1 { font-size: 2rem; font-weight: 700; margin: 0; }
 .banner p  { font-size: 1rem; margin: 6px 0 0; opacity: 0.92; }
 
-/* Section card */
 .card {
     background: #fff7f0;
     border-left: 5px solid #ff6b00;
@@ -48,19 +69,6 @@ html, body, [class*="css"] {
     letter-spacing: 1px;
     margin-bottom: 4px;
 }
-
-/* Submit button override */
-div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
-    background: linear-gradient(135deg, #ff6b00, #ff9f00) !important;
-    color: white !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    padding: 12px 36px !important;
-    font-size: 1rem !important;
-}
-
-/* Download button */
 .stDownloadButton > button {
     background: #222 !important;
     color: white !important;
@@ -69,15 +77,7 @@ div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
     border: none !important;
     padding: 10px 28px !important;
 }
-.stDownloadButton > button:hover {
-    background: #ff6b00 !important;
-}
-
-/* Table header */
-thead tr th {
-    background-color: #ff6b00 !important;
-    color: white !important;
-}
+.stDownloadButton > button:hover { background: #ff6b00 !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -89,21 +89,13 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Session state: data store ─────────────────────────────────────────────────
-if "survey_data" not in st.session_state:
-    st.session_state.survey_data = []
-
-# ── Helper: auto Sr No ───────────────────────────────────────────────────────
-def next_sr():
-    return len(st.session_state.survey_data) + 1
-
 # ── Form ──────────────────────────────────────────────────────────────────────
 st.markdown("### 📋 Add Outlet Entry")
 
 with st.form("survey_form", clear_on_submit=True):
 
     st.markdown('<div class="card"><div class="card-title">Outlet Information</div>', unsafe_allow_html=True)
-    col0, col0b = st.columns(2)
+    col0, _ = st.columns(2)
     with col0:
         survey_date = st.date_input("Date *", value=datetime.date.today())
     col1, col2 = st.columns(2)
@@ -143,22 +135,21 @@ with st.form("survey_form", clear_on_submit=True):
 
     submitted = st.form_submit_button("➕  Add Entry", use_container_width=True)
 
-# ── Validate & save ───────────────────────────────────────────────────────────
+# ── Validate & save to CSV ────────────────────────────────────────────────────
 if submitted:
     errors = []
-    if not outlet_name.strip():         errors.append("Outlet Name is required.")
-    if not outlet_mobile.strip():       errors.append("Outlet Mobile No is required.")
-    if outlet_type == "-- Select --":   errors.append("Please select Outlet Type.")
-    if outlet_class == "-- Select --":  errors.append("Please select Outlet Class.")
-    if not location.strip():            errors.append("Location is required.")
-    if not outlet_address.strip():      errors.append("Outlet Address is required.")
+    if not outlet_name.strip():        errors.append("Outlet Name is required.")
+    if not outlet_mobile.strip():      errors.append("Outlet Mobile No is required.")
+    if outlet_type == "-- Select --":  errors.append("Please select Outlet Type.")
+    if outlet_class == "-- Select --": errors.append("Please select Outlet Class.")
+    if not location.strip():           errors.append("Location is required.")
+    if not outlet_address.strip():     errors.append("Outlet Address is required.")
 
     if errors:
         for e in errors:
             st.error(e)
     else:
-        st.session_state.survey_data.append({
-            "Sr No":            next_sr(),
+        save_row({
             "Date":             survey_date.strftime("%d-%m-%Y"),
             "Outlet Name":      outlet_name.strip(),
             "Outlet Mobile No": outlet_mobile.strip(),
@@ -169,23 +160,21 @@ if submitted:
             "Sub-Village":      sub_village.strip(),
             "Outlet Address":   outlet_address.strip(),
         })
-        st.success(f"✅ Entry #{next_sr() - 1} saved successfully!")
+        st.success("✅ Entry saved successfully!")
+        st.rerun()
 
 # ── Data table & download ─────────────────────────────────────────────────────
 st.markdown("---")
+df = load_data()
 
-if st.session_state.survey_data:
-    df = pd.DataFrame(st.session_state.survey_data)
-
+if not df.empty:
     st.markdown(f"### 📊 Collected Data &nbsp; `{len(df)} entries`")
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-    # ── Excel export ──────────────────────────────────────────────────────────
     def to_excel(dataframe: pd.DataFrame) -> bytes:
         buf = BytesIO()
         with pd.ExcelWriter(buf, engine="openpyxl") as writer:
             dataframe.to_excel(writer, index=False, sheet_name="Survey Data")
-            # Auto-fit columns
             ws = writer.sheets["Survey Data"]
             for col_cells in ws.columns:
                 max_len = max(
@@ -206,9 +195,8 @@ if st.session_state.survey_data:
         )
     with col_clr:
         if st.button("🗑️ Clear All", use_container_width=True):
-            st.session_state.survey_data = []
+            clear_data()
             st.rerun()
-
 else:
     st.info("No entries yet. Fill the form above to start collecting data.")
 
@@ -219,3 +207,4 @@ st.markdown("""
     Forgokul Snaks &nbsp;|&nbsp; Outlet Survey System &nbsp;|&nbsp; Powered by Streamlit
 </div>
 """, unsafe_allow_html=True)
+    
